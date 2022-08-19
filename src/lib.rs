@@ -1,6 +1,10 @@
+extern crate rsa;
+extern crate crypto;
+extern crate base64;
 
 
-pub mod wx_pay;
+mod wx_pay;
+pub use crate::wx_pay::*;
 
 mod random;
 use random::rand_string;
