@@ -1,13 +1,12 @@
-extern crate rsa;
-extern crate crypto;
 extern crate base64;
+extern crate crypto;
+extern crate rsa;
 
+mod random;
+mod utils;
 
 mod wx_pay;
 pub use crate::wx_pay::*;
-
-mod random;
-use random::rand_string;
 
 // #[cfg(test)]
 // mod tests {

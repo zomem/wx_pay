@@ -1,21 +1,19 @@
+use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
+use reqwest::Error;
+use serde::{Deserialize, Serialize};
 
-
-use reqwest::header::{CONTENT_TYPE, ACCEPT, HeaderMap, AUTHORIZATION, USER_AGENT};
-use reqwest::{Error, Response};
-use serde::{Serialize, Deserialize};
-use serde_json::value::Value;
-
-use rsa::{RsaPrivateKey, PaddingScheme, Hash, pkcs8::DecodePrivateKey};
-use crypto::sha2::Sha256;
 use crypto::digest::Digest;
+use crypto::sha2::Sha256;
+use rsa::{pkcs8::DecodePrivateKey, Hash, PaddingScheme, RsaPrivateKey};
 use std::iter::repeat;
 
-use crate::rand_string;
-use chrono::Utc;
+use crate::random::rand_string;
+use crate::utils::get_slice_arr;
 use aes_gcm::{
-    aead::{Aead, KeyInit, generic_array::GenericArray, Payload},
-    Aes256Gcm, Nonce
+    aead::{generic_array::GenericArray, Aead, KeyInit, Payload},
+    Aes256Gcm,
 };
+use chrono::Utc;
 
 pub struct WxPay<'a> {
     pub appid: &'a str,
@@ -33,9 +31,8 @@ pub struct WxData {
     pub pay_sign: String,
     pub package: String,
     pub nonce_str: String,
-    pub time_stamp: String
+    pub time_stamp: String,
 }
-
 
 #[derive(Serialize, Deserialize)]
 pub struct Amount {
@@ -63,10 +60,8 @@ struct ApiBody<'a> {
 #[derive(Clone, Copy)]
 enum Method {
     GET,
-    POST,  
-} 
-
-
+    POST,
+}
 
 impl<'a> WxPay<'a> {
     fn rsa_sign(&self, content: String, private_key: &str) -> String {
@@ -82,58 +77,71 @@ impl<'a> WxPay<'a> {
         hasher.result(&mut buf);
         // 对摘要进行签名
         let sign_result = private_key.sign(
-            PaddingScheme::PKCS1v15Sign { hash: Option::from(Hash::SHA2_256) },
-            &buf
+            PaddingScheme::PKCS1v15Sign {
+                hash: Option::from(Hash::SHA2_256),
+            },
+            &buf,
         );
         // 签名结果转化为 base64.
         let vec = sign_result.expect("Create sign error for base64");
         base64::encode(vec)
     }
 
-    fn get_headers(&self, api_body:ApiBody, params_string: String) -> Result<HeaderMap, Error> {
+    fn get_headers(&self, api_body: ApiBody, params_string: String) -> Result<HeaderMap, Error> {
         let dt = Utc::now();
         let timestamp = dt.timestamp();
         let onece_str = rand_string(32);
         let method = match api_body.method {
             Method::GET => "GET",
-            Method::POST => "POST"
+            Method::POST => "POST",
         };
         // 获取签名
         let signature = self.rsa_sign(
-            method.to_string() + "\n"
-                + api_body.pathname + "\n" 
-                + timestamp.to_string().as_str() + "\n"
-                + onece_str.as_str() + "\n"
-                + params_string.as_str() + "\n"
-            , 
-            &self.private_key
+            method.to_string()
+                + "\n"
+                + api_body.pathname
+                + "\n"
+                + timestamp.to_string().as_str()
+                + "\n"
+                + onece_str.as_str()
+                + "\n"
+                + params_string.as_str()
+                + "\n",
+            &self.private_key,
         );
         // 组装header
         let authorization = "WECHATPAY2-SHA256-RSA2048 mchid=\"".to_string()
-            + &self.mchid + "\",nonce_str=\""
-            + onece_str.as_str() + "\",timestamp=\""
-            + timestamp.to_string().as_str() + "\",signature=\""
-            + signature.as_str() + "\",serial_no=\""
-            + &self.serial_no + "\"";
-        
+            + &self.mchid
+            + "\",nonce_str=\""
+            + onece_str.as_str()
+            + "\",timestamp=\""
+            + timestamp.to_string().as_str()
+            + "\",signature=\""
+            + signature.as_str()
+            + "\",serial_no=\""
+            + &self.serial_no
+            + "\"";
+
         let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, "application/json; charset=utf-8".parse().unwrap());
+        headers.insert(
+            CONTENT_TYPE,
+            "application/json; charset=utf-8".parse().unwrap(),
+        );
         headers.insert(ACCEPT, "application/json".parse().unwrap());
         headers.insert(AUTHORIZATION, authorization.parse().unwrap());
         headers.insert(USER_AGENT, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.134 Safari/537.36 Edg/103.0.1264.71".parse().unwrap());
 
         Ok(headers)
-
     }
-    
+
     /// ### jsapi 微信支付
-    /// 
+    ///
     /// 使用示例：
     /// ```
     /// use wx_pay::WxPay;
-    /// 
+    ///
     ///     ...
-    ///     // 初始化 
+    ///     // 初始化
     ///     let wx_pay = WxPay {
     ///         appid: WECHAT_MINI_APP_ID,
     ///         mchid: WECHAT_PAY_MCH_ID,
@@ -143,18 +151,17 @@ impl<'a> WxPay<'a> {
     ///         notify_url: WECHAT_PAY_NOTIFY_URL,  // 支付回调地址
     ///         certificates: None
     ///     };
-    /// 
+    ///
     ///     let data = wx_pay.jsapi(JsapiParams {
     ///         description: "测试122".to_string(),
     ///         out_trade_no: rand_string(16),  // 随机字符串
     ///         amount: Amount { total: 1 },
     ///         payer: Payer { openid: openid}
     ///     }).await.unwrap();
-    /// 
-    /// 
+    ///
+    ///
     /// ```
     pub async fn jsapi(&self, params: JsapiParams) -> Result<WxData, Error> {
-
         #[derive(Serialize, Deserialize)]
         struct Jsapi<'a> {
             description: String,
@@ -187,31 +194,36 @@ impl<'a> WxPay<'a> {
 
         #[derive(Serialize, Deserialize, Debug)]
         struct JsapiRes {
-            prepay_id: String
+            prepay_id: String,
         }
         let client = reqwest::Client::new();
-        let pre_data: JsapiRes = client.post(api_body.url.clone())
+        let pre_data: JsapiRes = client
+            .post(api_body.url)
             .headers(headers_all)
             .json(&jsapi_params)
             .send()
             .await
             .unwrap()
             .json()
-            .await.unwrap();
+            .await
+            .unwrap();
 
         let ran_str = rand_string(32);
         let pack = "prepay_id=".to_string() + pre_data.prepay_id.as_str();
         let dt = Utc::now();
         let now_time = dt.timestamp();
-        
+
         // 获取签名
         let pay_si = self.rsa_sign(
-            self.appid.to_string() + "\n"
-                + now_time.to_string().as_str() + "\n" 
-                + ran_str.as_str() + "\n"
-                + pack.as_str() + "\n"
-            ,
-            &self.private_key
+            self.appid.to_string()
+                + "\n"
+                + now_time.to_string().as_str()
+                + "\n"
+                + ran_str.as_str()
+                + "\n"
+                + pack.as_str()
+                + "\n",
+            &self.private_key,
         );
 
         let wx_data = WxData {
@@ -221,17 +233,10 @@ impl<'a> WxPay<'a> {
             nonce_str: ran_str,
             time_stamp: now_time.to_string(),
         };
-        
+
         Ok(wx_data)
     }
-
-
 }
-
-
-
-
-
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WxDecodeData {
@@ -246,7 +251,7 @@ pub struct WxDecodeData {
     pub attach: String,
     pub success_time: String,
     pub payer: Payer,
-    pub amount: WxDecodeDataAmount
+    pub amount: WxDecodeDataAmount,
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WxDecodeDataAmount {
@@ -257,7 +262,7 @@ pub struct WxDecodeDataAmount {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct  WxPayNotifyResource {
+pub struct WxPayNotifyResource {
     pub algorithm: String,
     pub associated_data: String,
     pub ciphertext: String,
@@ -274,31 +279,30 @@ pub struct WxPayNotify {
     pub summary: String,
 }
 
-
 /// ## 微信支付，解密
-/// 
+///
 /// wechat_pay_apiv3 为apiv3 密钥
 /// params 为微信回调请求数据
-/// 
+///
 /// 使用示例 (actix-web为例，回调接口)
-/// 
+///
 /// ```
 /// use wx_pay::{decode_wx, WxPayNotify};
-/// 
+///
 /// #[post("/pay/notify_url/action")]
 /// pub async fn pay_notify_url_action(params: web::Json<WxPayNotify>) -> Result<impl Responder> {
 ///     println!("##############  微信支付 回调 #############");
 ///     println!("{:#?}", params);
 ///     let t_params = params.0;
-///     let data = decode_wx(t_params).unwrap();
+///     let data = decode_wx(WECHAT_PAY_APIV3, t_params).unwrap();
 ///     println!("json  {:#?}", data);
 ///     println!("##############  微信支付 回调end #############");
 ///     Ok(web::Json(ResultStatus {status: 2, message: "成功".into()}))
 /// }
-/// 
+///
 /// ```
-/// 
-/// 
+///
+///
 pub fn decode_wx(wechat_pay_apiv3: &str, params: WxPayNotify) -> Result<WxDecodeData, Error> {
     let auth_key_length = 16;
 
@@ -307,9 +311,13 @@ pub fn decode_wx(wechat_pay_apiv3: &str, params: WxPayNotify) -> Result<WxDecode
     let key = GenericArray::from_slice(&t_key);
 
     let mut t_nonce = [0u8; 12];
-    hex::decode_to_slice(hex::encode(params.resource.nonce.clone()), &mut t_nonce as &mut [u8]).unwrap();
+    hex::decode_to_slice(
+        hex::encode(params.resource.nonce.clone()),
+        &mut t_nonce as &mut [u8],
+    )
+    .unwrap();
     let nonce = GenericArray::from_slice(&t_nonce);
-    
+
     let t_ciphertext_base = base64::decode(params.resource.ciphertext.clone()).unwrap();
     let cipherdata_length = t_ciphertext_base.len() - auth_key_length;
 
@@ -319,8 +327,10 @@ pub fn decode_wx(wechat_pay_apiv3: &str, params: WxPayNotify) -> Result<WxDecode
     let mut ciphertext = Vec::from(cipherdata);
     ciphertext.extend_from_slice(&auth_tag);
 
-    let mut t_add = [0u8; 11];  // 这里可能会根据返回值 associated_data 长度而不同，目前应该是固定为 "transaction" 。
-    hex::decode_to_slice(hex::encode(params.resource.associated_data.clone()), &mut t_add as &mut [u8]).unwrap();
+    // 注： AEAD_AES_256_GCM算法的接口细节，请参考rfc5116。微信支付使用的密钥key长度为32个字节，
+    // 随机串nonce长度12个字节，associated_data长度小于16个字节并可能为空字符串。
+    // 这里可能会根据返回值 associated_data 长度而不同，目前应该是固定为 "transaction" 。
+    let t_add = get_slice_arr(params.resource.associated_data);
     let payload = Payload {
         msg: &ciphertext,
         aad: &t_add,
