@@ -1,24 +1,10 @@
-use aes_gcm::{
-    aead::{generic_array::GenericArray, Aead, KeyInit, Payload},
-    Aes256Gcm,
-};
-use base64::{engine, Engine};
-use pkcs8::DecodePrivateKey;
-use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
-use reqwest::Error;
-use rsa::{
-    sha2::{Digest, Sha256},
-    Pkcs1v15Sign, RsaPrivateKey,
-};
 use serde::{Deserialize, Serialize};
 
-// use crate::random::rand_string;
-// use crate::utils::get_slice_arr;
-
 use crate::{
-    api::{Amount, Jsapi, PayApi, Payer, WxData},
-    fetch::post,
-    utils::{gen_rand_str, get_timestamp, rsa_sign},
+    api::{Amount, Jsapi, PayApi, Payer, WxPayData},
+    fetch::{get, post},
+    utils::{gen_rand_str, get_timestamp, sha_rsa_sign},
+    Refund, RefundDetail, TransactionDetail,
 };
 
 pub struct WxPay<'a> {
@@ -26,19 +12,20 @@ pub struct WxPay<'a> {
     pub appid: &'a str,
     /// 【直连商户号】 直连商户号
     pub mchid: &'a str,
+    /// 证书key .pem文件
     pub private_key: &'a str,
     pub serial_no: &'a str,
+    /// apiv3 私钥，32位字符
     pub api_v3_private_key: &'a str,
     /// 【通知地址】 异步接收微信支付结果通知的回调地址，通知URL必须为外网可访问的URL，不能携带参数。 公网域名必须为HTTPS，如果是走专线接入，使用专线NAT IP或者私有回调域名可使用HTTP
     pub notify_url: &'a str,
-    pub certificates: Option<&'a str>,
 }
 
 impl<'a> WxPay<'a> {
     /// jsapi 支付，返回客户端的支付参数信息
-    pub async fn jsapi(&self, body: &Jsapi) -> anyhow::Result<WxData> {
+    pub async fn jsapi(&self, body: &Jsapi) -> anyhow::Result<WxPayData> {
         let pay_api = PayApi::Jsapi;
-        let pay_req = pay_api.get_pay_req(&self);
+        let pay_req = pay_api.get_pay_path(&self);
         #[derive(Serialize, Deserialize, Debug, Clone)]
         struct JsapiData {
             description: String,
@@ -68,7 +55,7 @@ impl<'a> WxPay<'a> {
         let ran_str = gen_rand_str();
         let now_time = get_timestamp();
         // 获取签名
-        let pay_sign = rsa_sign(
+        let pay_sign = sha_rsa_sign(
             &self.private_key,
             self.appid.to_string()
                 + "\n"
@@ -79,7 +66,8 @@ impl<'a> WxPay<'a> {
                 + pack.as_str()
                 + "\n",
         )?;
-        Ok(WxData {
+        Ok(WxPayData {
+            app_id: None,
             sign_type: "RSA".into(),
             pay_sign,
             package: pack,
@@ -87,11 +75,65 @@ impl<'a> WxPay<'a> {
             time_stamp: now_time.to_string(),
         })
     }
+
+    /// 微信支付订单号查询订单
+    pub async fn get_transactions_by_id(
+        &self,
+        transaction_id: &str,
+    ) -> anyhow::Result<TransactionDetail> {
+        let pay_api = PayApi::GetTransactionsById { transaction_id };
+        let pay_req = pay_api.get_pay_path(&self);
+        let data: TransactionDetail = get(&self, &pay_req).await?;
+        Ok(data)
+    }
+
+    /// 商户订单号查询订单
+    pub async fn get_transactions_by_out_trade_no(
+        &self,
+        out_trade_no: &str,
+    ) -> anyhow::Result<TransactionDetail> {
+        let pay_api = PayApi::GetTransactionsByOutTradeNo { out_trade_no };
+        let pay_req = pay_api.get_pay_path(&self);
+        let data: TransactionDetail = get(&self, &pay_req).await?;
+        Ok(data)
+    }
+
+    /// 关闭订单，以下情况需要调用关单接口：
+    /// 商户订单支付失败需要生成新单号重新发起支付，要对原订单号调用关单，避免重复支付；
+    /// 系统下单后，用户支付超时，系统退出不再受理，避免用户继续，请调用关单接口。
+    pub async fn close(&self, out_trade_no: &str) -> anyhow::Result<()> {
+        let pay_api = PayApi::Close { out_trade_no };
+        let pay_req = pay_api.get_pay_path(&self);
+        #[derive(Deserialize, Serialize)]
+        struct Mchid {
+            mchid: String,
+        }
+        let body = Mchid {
+            mchid: self.mchid.to_string(),
+        };
+        let _ = post(&self, &pay_req, &body).await?;
+        Ok(())
+    }
+
+    /// 退款申请
+    pub async fn refund(&self, body: &Refund) -> anyhow::Result<RefundDetail> {
+        let pay_api = PayApi::Refund;
+        let pay_req = pay_api.get_pay_path(&self);
+        let data: RefundDetail = post(&self, &pay_req, body).await?;
+        Ok(data)
+    }
+
+    /// 查寻单笔退款
+    pub async fn get_refund(&self, out_refund_no: &str) -> anyhow::Result<RefundDetail> {
+        let pay_api = PayApi::GetRefund { out_refund_no };
+        let pay_req = pay_api.get_pay_path(&self);
+        let data: RefundDetail = get(&self, &pay_req).await?;
+        Ok(data)
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use super::WxPay;
     use chrono::Local;
     use uuid::Uuid;
 

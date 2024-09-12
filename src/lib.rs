@@ -5,5 +5,7 @@ mod fetch;
 mod utils;
 pub use utils::*;
 
+pub mod decode;
+
 mod wx_pay;
-pub use crate::wx_pay::*;
+pub use wx_pay::*;
