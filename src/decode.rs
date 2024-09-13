@@ -13,8 +13,8 @@ use crate::{
 /// 微信支付回调时，返回的 错误 通知应答格式
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct WxPayNotifyResponse {
-    code: String,
-    message: String,
+    pub code: String,
+    pub message: String,
 }
 
 /// 支付回调，#resource解密后字段
@@ -98,12 +98,7 @@ pub struct WxPayNotify {
 ///     let data = decode_wx_pay(WECHAT_PAY_APIV3, params).unwrap();
 ///     if false { //  返回失败的 通知应答
 ///         return Err(
-///             actix_web::error::ErrorInternalServerError(
-///                 WxPayNotifyResponse {
-///                     code: "FAIL",
-///                     message: "失败"
-///                 }
-///             )
+///             actix_web::error::ErrorInternalServerError("失败")
 ///         )
 ///     }
 ///     Ok(web::Json(()))

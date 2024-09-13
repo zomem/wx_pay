@@ -1,6 +1,6 @@
 [package]
 name = "wx_pay"
-version = "0.2.0"
+version = "0.2.2"
 edition = "2021"
 authors = ["zomem"]
 description = "微信支付 api"
@@ -22,3 +22,4 @@ hex = "0.4.3"
 anyhow = "1.0.87"
 pkcs8 = "0.10.2"
 uuid = { version = "1.10.0", features = ["v4"] }
+serde_with = "3.9.0"

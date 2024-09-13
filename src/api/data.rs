@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
 // 通用参数
 //
 
 /// 【交易类型】 交易类型，枚举值：
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub enum TradeType {
     #[default]
     /// 公众号支付
@@ -22,7 +23,7 @@ pub enum TradeType {
 }
 
 /// 【交易状态】 交易状态，枚举值：
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub enum TradeState {
     #[default]
     /// 支付成功
@@ -42,6 +43,7 @@ pub enum TradeState {
 }
 
 /// 金额，单位 分
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Amount {
     /// 【总金额】 订单总金额，单位为分。
@@ -57,6 +59,7 @@ pub struct Payer {
 }
 
 /// 客户端支付时的 参数信息
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct WxPayData {
     /// 发起支付的 公众号或小程序的appid
@@ -65,10 +68,11 @@ pub struct WxPayData {
     pub pay_sign: String,
     pub package: String,
     pub nonce_str: String,
-    pub time_stamp: String,
+    pub time_stamp: i64,
 }
 
 /// 商品详情
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct GoodsDetail {
     /// 【商户侧商品编码】 由半角的大小写字母、数字、中划线、下划线中的一种或几种组成。
@@ -83,6 +87,7 @@ pub struct GoodsDetail {
     pub unit_price: u64,
 }
 /// 订单详情
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct OrderDetail {
     /// 【订单原价】 1、商户侧一张小票订单可能被分多次支付，订单原价用于记录整张小票的交易金额。
@@ -95,6 +100,7 @@ pub struct OrderDetail {
     pub goods_detail: Vec<GoodsDetail>,
 }
 /// 门店信息
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct StoreInfo {
     /// 【门店编号】 商户侧门店编号
@@ -107,6 +113,7 @@ pub struct StoreInfo {
     pub address: Option<String>,
 }
 /// 支付场景
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct SceneInfo {
     /// 【用户终端IP】 用户的客户端IP，支持IPv4和IPv6两种格式的IP地址。
@@ -117,6 +124,7 @@ pub struct SceneInfo {
     pub store_info: Option<StoreInfo>,
 }
 /// 结算信息
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct SettleInfo {
     /// 【是否指定分账】 是否指定分账， true：是 false：否
@@ -124,6 +132,7 @@ pub struct SettleInfo {
 }
 
 /// jsapi 请求参数
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Jsapi {
     /// 【商品描述】 商品描述
@@ -134,6 +143,10 @@ pub struct Jsapi {
     pub time_expire: Option<String>,
     /// 【附加数据】 附加数据，在查询API和支付通知中原样返回，可作为自定义参数使用，实际情况下只有支付完成状态才会返回该字段。
     pub attach: Option<String>,
+    /// 【订单优惠标记】 订单优惠标记
+    pub goods_tag: Option<String>,
+    /// 【电子发票入口开放标识】 传入true时，支付成功消息和支付详情页将出现开票入口。需要在微信支付商户平台或微信公众平台开通电子发票功能，传此字段才可生效。
+    pub support_fapiao: Option<bool>,
     /// 【订单金额】 订单金额信息
     pub amount: Amount,
     /// 【支付者】 支付者信息。
@@ -145,8 +158,28 @@ pub struct Jsapi {
     /// 【结算信息】 结算信息
     pub settle_info: Option<SettleInfo>,
 }
+/// jsapi wx 支付 请求参数
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub(crate) struct JsapiParams {
+    pub appid: String,
+    pub mchid: String,
+    pub notify_url: String,
+    pub description: String,
+    pub out_trade_no: String,
+    pub time_expire: Option<String>,
+    pub attach: Option<String>,
+    pub goods_tag: Option<String>,
+    pub support_fapiao: Option<bool>,
+    pub amount: Amount,
+    pub payer: Payer,
+    pub detail: Option<OrderDetail>,
+    pub scene_info: Option<SceneInfo>,
+    pub settle_info: Option<SettleInfo>,
+}
 
 /// 订单号查询详情
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct TransactionDetail {
     /// 【公众号ID】 公众号ID
@@ -178,6 +211,7 @@ pub struct TransactionDetail {
 }
 
 /// 退款申请
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Refund {
     /// 【微信支付订单号】 原支付交易对应的微信订单号，与out_trade_no二选一
@@ -198,6 +232,8 @@ pub struct Refund {
     /// 【金额信息】 订单金额信息
     pub goods_detail: Option<Vec<RefundGoodsDetail>>,
 }
+
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct RefundAmount {
     /// 【退款金额】 退款金额，单位为分，只能为整数，不能超过原订单支付金额。
@@ -225,6 +261,8 @@ pub struct RefundAmount {
     /// 【手续费退款金额】 手续费退款金额，单位为分
     pub refund_fee: Option<u64>,
 }
+
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct RefundAmountFrom {
     /// 【出资账户类型】 出资账户类型 可选取值：
@@ -236,7 +274,9 @@ pub struct RefundAmountFrom {
     /// 【出资金额】 对应账户出资金额，单位为分
     pub amount: u64,
 }
+
 /// 退单商品详情
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct RefundGoodsDetail {
     /// 【商户侧商品编码】 由半角的大小写字母、数字、中划线、下划线中的一种或几种组成。
@@ -252,7 +292,9 @@ pub struct RefundGoodsDetail {
     /// 【商品退货数量】 对应商品的退货数量
     pub refund_quantity: u64,
 }
+
 /// 退款申请 应答参数
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct RefundDetail {
     /// 【微信支付退款号】 微信支付退款号
@@ -315,7 +357,8 @@ pub struct RefundDetail {
     /// 【金额信息】 金额详细信息
     pub amount: RefundAmount,
 }
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub enum RefundStatus {
     /// 退款成功
     #[default]

@@ -1,21 +1,21 @@
 use base64::{engine, Engine};
 use chrono::Local;
 use pkcs8::DecodePrivateKey;
-use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
 use rsa::{
     sha2::{Digest, Sha256},
     Pkcs1v15Sign, RsaPrivateKey,
 };
-use serde::{de::DeserializeOwned,  Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
-use crate::api::{PayReq};
+use crate::api::PayReq;
 use crate::WxPay;
 
 /// 获取当前时间戳
-pub(crate) fn get_timestamp() -> String {
+pub(crate) fn get_timestamp() -> i64 {
     let dt = Local::now();
-    dt.timestamp().to_string()
+    dt.timestamp()
 }
 /// 生成32位随机字符串
 pub(crate) fn gen_rand_str() -> String {
@@ -62,7 +62,7 @@ where
             + "\n"
             + pay_req.path.as_str()
             + "\n"
-            + timestamp.as_str()
+            + timestamp.to_string().as_str()
             + "\n"
             + onece_str.as_str()
             + "\n"
@@ -86,6 +86,12 @@ where
     headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
     headers.insert(ACCEPT, "application/json".parse().unwrap());
     headers.insert(AUTHORIZATION, authorization.parse().unwrap());
+    headers.insert(
+        USER_AGENT,
+        "Mozilla/5.0 (X11; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0"
+            .parse()
+            .unwrap(),
+    );
 
     Ok(headers)
 }
@@ -93,9 +99,7 @@ where
 #[cfg(test)]
 mod test {
     use super::sha_rsa_sign;
-    use rsa::{
-        sha2::{Digest, Sha256}
-    };
+    use rsa::sha2::{Digest, Sha256};
     #[test]
     fn test_sha2() {
         let mut hasher = <Sha256 as Digest>::new();

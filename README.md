@@ -40,14 +40,13 @@ let wx_pay = WxPay {
     wx_pay.get_refund
 ```
 
-小程序支付
 后台接口，以actix-web为例
 ```rust
 use wx_pay::{decode_wx_pay, Amount, Jsapi, Payer, WxPayData, WxPay, WxPayNotify};
 
 #[post("/pay/wx/v3/test")]
 pub async fn pay_wx_v3_test() -> Result<impl Responder> {
-    let wx_pay = WxPay {
+    let wxpay = WxPay {
         appid: WECHAT_MINI_APP_ID,
         mchid: WECHAT_PAY_MCH_ID,
         private_key: WECHAT_PRIVATE_KEY,
@@ -55,7 +54,7 @@ pub async fn pay_wx_v3_test() -> Result<impl Responder> {
         apiv3_private_key: WECHAT_PAY_APIV3,
         notify_url: WECHAT_PAY_NOTIFY_URL,
     };
-    let data: WxPayData = wx_pay
+    let data: WxPayData = wxpay
         .jsapi(&Jsapi {
             description: "测试122".to_string(),
             out_trade_no: rand_string(16),
@@ -76,7 +75,7 @@ pub async fn pay_notify_url_action(params: web::Json<WxPayNotify>) -> Result<imp
 }
 ```
 
-小程序端：
+公众号/小程序端：
 ```javascript
 let res = await post("/pay/wx/v3/test");
 wx.requestPayment({

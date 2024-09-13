@@ -4,9 +4,10 @@ use crate::{
     api::{Amount, Jsapi, PayApi, Payer, WxPayData},
     fetch::{get, post},
     utils::{gen_rand_str, get_timestamp, sha_rsa_sign},
-    Refund, RefundDetail, TransactionDetail,
+    JsapiParams, Refund, RefundDetail, TransactionDetail,
 };
 
+#[derive(Debug)]
 pub struct WxPay<'a> {
     /// 【公众号ID】 公众号ID
     pub appid: &'a str,
@@ -26,24 +27,22 @@ impl<'a> WxPay<'a> {
     pub async fn jsapi(&self, body: &Jsapi) -> anyhow::Result<WxPayData> {
         let pay_api = PayApi::Jsapi;
         let pay_req = pay_api.get_pay_path(&self);
-        #[derive(Serialize, Deserialize, Debug, Clone)]
-        struct JsapiData {
-            description: String,
-            out_trade_no: String,
-            amount: Amount,
-            payer: Payer,
-            appid: String,
-            mchid: String,
-            notify_url: String,
-        }
-        let jsapi_params = JsapiData {
+
+        let jsapi_params = JsapiParams {
+            appid: self.appid.to_string(),
+            mchid: self.mchid.to_string(),
+            notify_url: self.notify_url.to_string(),
             description: body.description.clone(),
             out_trade_no: body.out_trade_no.clone(),
             amount: body.amount.clone(),
             payer: body.payer.clone(),
-            appid: self.appid.to_string(),
-            mchid: self.mchid.to_string(),
-            notify_url: self.notify_url.to_string(),
+            time_expire: body.time_expire.clone(),
+            attach: body.attach.clone(),
+            goods_tag: body.goods_tag.clone(),
+            support_fapiao: body.support_fapiao.clone(),
+            detail: body.detail.clone(),
+            scene_info: body.scene_info.clone(),
+            settle_info: body.settle_info.clone(),
         };
         #[derive(Serialize, Deserialize, Debug)]
         struct JsapiRes {
@@ -59,7 +58,7 @@ impl<'a> WxPay<'a> {
             &self.private_key,
             self.appid.to_string()
                 + "\n"
-                + now_time.as_str()
+                + now_time.to_string().as_str()
                 + "\n"
                 + ran_str.as_str()
                 + "\n"
@@ -67,12 +66,12 @@ impl<'a> WxPay<'a> {
                 + "\n",
         )?;
         Ok(WxPayData {
-            app_id: None,
+            app_id: Some(self.appid.to_string()),
             sign_type: "RSA".into(),
             pay_sign,
             package: pack,
             nonce_str: ran_str,
-            time_stamp: now_time.to_string(),
+            time_stamp: now_time,
         })
     }
 
@@ -137,6 +136,9 @@ mod test {
     use chrono::Local;
     use uuid::Uuid;
 
+    use super::JsapiParams;
+    use crate::{Amount, Payer};
+
     #[test]
     fn test_time() {
         let dt = Local::now();
@@ -148,5 +150,32 @@ mod test {
 
         println!("idid  {}", id);
         println!("idid  {}", id.len());
+    }
+
+    #[test]
+    fn test_jsapi_params() {
+        let a = JsapiParams {
+            appid: "wx3dcb".to_string(),
+            mchid: "1124".to_string(),
+            notify_url: "https:notify".to_string(),
+            description: "测试122".to_string(),
+            out_trade_no: "190767189563940864".to_string(),
+            time_expire: None,
+            attach: None,
+            goods_tag: None,
+            support_fapiao: None,
+            amount: Amount {
+                total: 1,
+                currency: None,
+            },
+            payer: Payer {
+                openid: "oxYrE6123123I".to_string(),
+            },
+            detail: None,
+            scene_info: None,
+            settle_info: None,
+        };
+        let b: serde_json::Value = serde_json::to_value(&a).unwrap();
+        println!("bbb  {:?}", b);
     }
 }
