@@ -58,8 +58,12 @@ pub async fn pay_wx_v3_test() -> Result<impl Responder> {
         .jsapi(&Jsapi {
             description: "测试122".to_string(),
             out_trade_no: rand_string(16),
-            amount: Amount { total: 1 },
+            amount: Amount {
+                total: 1,
+                ..Default::default()
+            },
             payer: Payer { openid },
+            ..Default::default()
         })
         .await
         .unwrap();
