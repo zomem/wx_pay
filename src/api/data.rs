@@ -68,7 +68,7 @@ pub struct WxPayData {
     pub pay_sign: String,
     pub package: String,
     pub nonce_str: String,
-    pub time_stamp: i64,
+    pub time_stamp: String,
 }
 
 /// 商品详情

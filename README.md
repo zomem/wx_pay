@@ -43,6 +43,9 @@ let wx_pay = WxPay {
 后台接口，以actix-web为例
 ```rust
 use wx_pay::{decode_wx_pay, Amount, Jsapi, Payer, WxPayData, WxPay, WxPayNotify};
+use wx_pay::TradeState;
+use wx_pay::decode::{WxPayNotify, decode_wx_pay};
+use wx_pay::verification::WxPayVerification;
 
 #[post("/pay/wx/v3/test")]
 pub async fn pay_wx_v3_test() -> Result<impl Responder> {
@@ -72,9 +75,52 @@ pub async fn pay_wx_v3_test() -> Result<impl Responder> {
 
 /// 微信支付 回调
 #[post("/pay/notify_url/action")]
-pub async fn pay_notify_url_action(params: web::Json<WxPayNotify>) -> Result<impl Responder> {
-    let params = params.0;
-    let data = decode_wx_pay(WECHAT_PAY_APIV3, params).unwrap();
+pub async fn pay_notify_url_action(body: web::Bytes, req: actix_web::HttpRequest) -> Result<impl Responder> {
+    // 1. 用原始 body 进行验签
+    let body_str = std::str::from_utf8(&body)?;
+    let verification = WxPayVerification::new(WECHAT_PAY_PUBKEY.to_string());
+    // 获取验签所需的 HTTP 头信息
+    let timestamp = req
+        .headers()
+        .get("Wechatpay-Timestamp")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let nonce = req
+        .headers()
+        .get("Wechatpay-Nonce")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let signature = req
+        .headers()
+        .get("Wechatpay-Signature")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if WxPayVerification::is_test_signature(signature) {
+        return Err(error::ErrorNotAcceptable("测试签名"));
+    }
+    let is_verifi_ok = verification
+        .verify_response(timestamp, nonce, body_str, signature)
+        .map_err(|e| error::ErrorInternalServerError(e))?;
+    if !is_verifi_ok {
+        return Err(error::ErrorNotAcceptable("签名验证失败"));
+    }
+
+    // 2. 验签成功后再解析 JSON
+    let params: WxPayNotify = serde_json::from_slice(&body)?;
+    if params.event_type != "TRANSACTION.SUCCESS".to_string() {
+        // 没返回成功
+        return Err(error::ErrorMethodNotAllowed("失败"));
+    }
+    let data =
+        decode_wx_pay(WECHAT_PAY_APIV3, params).map_err(|e| error::ErrorInternalServerError(e))?;
+    if data.trade_state != TradeState::SUCCESS {
+        // 没返回成功
+        return Err(error::ErrorMethodNotAllowed("失败"));
+    }
+    println!("回调解密数据： {:#?}", data);
+
+    // ----- 你的业务逻辑 -----
+
     Ok(web::Json(()))
 }
 ```

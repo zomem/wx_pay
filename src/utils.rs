@@ -112,9 +112,8 @@ mod test {
     fn test_rsa_sign() {
         /// 微信支付 v3 密钥
         pub const WECHAT_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDwLFD7xpaiEIxq
-ijFoyoXaGrER4orr9m/9Syx+1MplJxuPIhj/w1i8ThGJe1RWV0q0FbVSPs1s1JYM
-0JIYhFIV/Eh/fFQA209XYyw=
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC8ZC2Rut7HbZeb
+3gOl9uymMJNXT+dFg40P10y8
 -----END PRIVATE KEY-----";
 
         let data = sha_rsa_sign(WECHAT_PRIVATE_KEY, "contentabc4").unwrap();

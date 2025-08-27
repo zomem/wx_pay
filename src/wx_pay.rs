@@ -71,7 +71,7 @@ impl<'a> WxPay<'a> {
             pay_sign,
             package: pack,
             nonce_str: ran_str,
-            time_stamp: now_time,
+            time_stamp: now_time.to_string(),
         })
     }
 
