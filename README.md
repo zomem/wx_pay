@@ -78,6 +78,7 @@ pub async fn pay_wx_v3_test() -> Result<impl Responder> {
 pub async fn pay_notify_url_action(body: web::Bytes, req: actix_web::HttpRequest) -> Result<impl Responder> {
     // 1. 用原始 body 进行验签
     let body_str = std::str::from_utf8(&body)?;
+    // WECHAT_PAY_PUBKEY 为 微信支付公钥
     let verification = WxPayVerification::new(WECHAT_PAY_PUBKEY.to_string());
     // 获取验签所需的 HTTP 头信息
     let timestamp = req
