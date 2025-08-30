@@ -1,10 +1,12 @@
 use base64::{engine, Engine};
 use chrono::Local;
-use pkcs8::DecodePrivateKey;
+use pkcs8::{DecodePrivateKey, DecodePublicKey};
 use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
 use rsa::{
+    pkcs1v15::Pkcs1v15Encrypt,
+    rand_core::OsRng,
     sha2::{Digest, Sha256},
-    Pkcs1v15Sign, RsaPrivateKey,
+    Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
@@ -37,11 +39,33 @@ where
     Ok(engine::general_purpose::STANDARD.encode(sign_result))
 }
 
+/// RSA公钥加密敏感信息
+pub(crate) fn rsa_encrypt(public_key_pem: &str, plaintext: &str) -> anyhow::Result<String> {
+    let public_key = RsaPublicKey::from_public_key_pem(public_key_pem)?;
+    let mut rng = OsRng;
+    let padding = Pkcs1v15Encrypt;
+    let encrypted_data = public_key.encrypt(&mut rng, padding, plaintext.as_bytes())?;
+    Ok(engine::general_purpose::STANDARD.encode(encrypted_data))
+}
+
 /// 获取请求头
 pub(crate) fn get_headers<T>(
     wx_pay: &WxPay,
     pay_req: &PayReq,
     body: Option<&T>,
+) -> anyhow::Result<HeaderMap>
+where
+    T: Serialize + DeserializeOwned,
+{
+    get_headers_with_serial(wx_pay, pay_req, body, None)
+}
+
+/// 获取带有Wechatpay-Serial头的请求头（用于转账等需要加密的接口）
+pub(crate) fn get_headers_with_serial<T>(
+    wx_pay: &WxPay,
+    pay_req: &PayReq,
+    body: Option<&T>,
+    wechatpay_serial: Option<&str>,
 ) -> anyhow::Result<HeaderMap>
 where
     T: Serialize + DeserializeOwned,
@@ -92,6 +116,11 @@ where
             .parse()
             .unwrap(),
     );
+
+    // 如果提供了 Wechatpay-Serial，则添加到请求头
+    if let Some(serial) = wechatpay_serial {
+        headers.insert("Wechatpay-Serial", serial.parse().unwrap());
+    }
 
     Ok(headers)
 }

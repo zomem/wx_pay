@@ -293,6 +293,80 @@ pub struct RefundGoodsDetail {
     pub refund_quantity: u64,
 }
 
+/// 转账场景报备信息
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct TransferSceneReportInfo {
+    /// 【报备信息类型】 转账场景下，需要报备的信息类型
+    pub info_type: String,
+    /// 【报备信息内容】 转账场景下，需要报备的信息内容
+    pub info_content: String,
+}
+
+/// 转账申请参数
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct Transfer {
+    /// 【商户AppID】 公众号/小程序/应用的AppID
+    pub appid: String,
+    /// 【商户单号】 商户系统内部的商家单号，要求此参数只能由数字、大小写字母组成，在商户系统内部唯一
+    pub out_bill_no: String,
+    /// 【转账场景ID】 该笔转账使用的转账场景，可前往"商户平台-产品中心-商家转账"中申请
+    pub transfer_scene_id: String,
+    /// 【收款用户OpenID】 用户在商户appid下的唯一标识
+    pub openid: String,
+    /// 【收款用户姓名】 收款方真实姓名，需要加密传入
+    pub user_name: Option<String>,
+    /// 【转账金额】 转账金额单位为"分"
+    pub transfer_amount: u64,
+    /// 【转账备注】 转账备注，用户收款时可见该备注信息
+    pub transfer_remark: String,
+    /// 【通知地址】 异步接收微信支付结果通知的回调地址
+    pub notify_url: Option<String>,
+    /// 【用户收款感知】 用户收款时感知到的收款原因
+    pub user_recv_perception: Option<String>,
+    /// 【转账场景报备信息】 各转账场景下需报备的内容
+    pub transfer_scene_report_infos: Vec<TransferSceneReportInfo>,
+}
+
+/// 转账单状态
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub enum TransferBillStatus {
+    /// 转账已受理
+    #[default]
+    ACCEPTED,
+    PROCESSING,
+    /// 待收款用户确认，可拉起微信收款确认页面进行收款确认
+    #[serde(rename = "WAIT_USER_CONFIRM")]
+    WAITUSERCONFIRM,
+    /// 转账中，可拉起微信收款确认页面再次重试确认收款
+    TRANSFERING,
+    /// 转账成功
+    SUCCESS,
+    /// 转账失败
+    FAIL,
+    /// 商户撤销请求受理成功，该笔转账正在撤销中
+    CANCELING,
+    /// 转账撤销完成
+    CANCELLED,
+}
+
+/// 转账申请 应答参数
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct TransferDetail {
+    /// 【商户单号】 商户系统内部的商家单号
+    pub out_bill_no: String,
+    /// 【微信转账单号】 微信转账单号，微信商家转账系统返回的唯一标识
+    pub transfer_bill_no: String,
+    /// 【单据创建时间】 单据受理成功时返回
+    pub create_time: String,
+    /// 【单据状态】 商家转账订单状态
+    pub state: TransferBillStatus,
+    /// 【跳转领取页面的package信息】 跳转微信支付收款页的package信息
+    pub package_info: Option<String>,
+}
+
 /// 退款申请 应答参数
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]

@@ -17,6 +17,7 @@ pub(crate) enum PayApi<'a> {
     Close { out_trade_no: &'a str },
     Refund,
     GetRefund { out_refund_no: &'a str },
+    Transfer,
 }
 
 impl PayApi<'_> {
@@ -51,6 +52,10 @@ impl PayApi<'_> {
             PayApi::GetRefund { out_refund_no } => PayReq {
                 method: ReqMethod::Get,
                 path: "/v3/refund/domestic/refunds/".to_string() + out_refund_no,
+            },
+            PayApi::Transfer => PayReq {
+                method: ReqMethod::Post,
+                path: "/v3/fund-app/mch-transfer/transfer-bills".to_string(),
             },
         }
     }

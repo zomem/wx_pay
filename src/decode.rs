@@ -7,14 +7,44 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     api::{Payer, SceneInfo, TradeState, TradeType},
-    RefundStatus,
+    RefundStatus, TransferBillStatus,
 };
 
-/// 微信支付回调时，返回的 错误 通知应答格式
+/// 微信回调时，返回的 错误 通知应答格式
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct WxPayNotifyResponse {
     pub code: String,
     pub message: String,
+}
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct WxNotifyResource {
+    /// 对开启结果数据进行加密的加密算法，目前只支持AEAD_AES_256_GCM。
+    pub algorithm: String,
+    /// Base64编码后的开启/停用结果数据密文。
+    pub ciphertext: String,
+    /// 附加数据。
+    pub associated_data: String,
+    /// 原始回调类型，为transaction。
+    pub original_type: String,
+    /// 加密使用的随机串。
+    pub nonce: String,
+}
+
+/// 微信所有回调第一层通知结构
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct WxNotify {
+    /// 通知的唯一ID。
+    pub id: String,
+    /// 通知创建的时间，遵循rfc3339标准格式，格式为yyyy-MM-DDTHH:mm:ss+TIMEZONE，yyyy-MM-DD表示年月日，T出现在字符串中，表示time元素的开头，HH:mm:ss.表示时分秒，TIMEZONE表示时区（+08:00表示东八区时间，领先UTC 8小时，即北京时间）。例如：2015-05-20T13:29:35+08:00表示北京时间2015年05月20日13点29分35秒。
+    pub create_time: String,
+    /// 通知的类型，支付成功通知的类型为 TRANSACTION.SUCCESS。
+    pub event_type: String,
+    /// 通知的资源数据类型，支付成功通知为encrypt-resource。
+    pub resource_type: String,
+    /// 通知资源数据。
+    pub resource: WxNotifyResource,
+    /// 回调摘要
+    pub summary: String,
 }
 
 /// 支付回调，#resource解密后字段
@@ -58,95 +88,8 @@ pub struct WxPayResourceAmount {
     /// 用户支付币种。
     pub payer_currency: String,
 }
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct WxPayNotifyResource {
-    /// 对开启结果数据进行加密的加密算法，目前只支持AEAD_AES_256_GCM。
-    pub algorithm: String,
-    /// Base64编码后的开启/停用结果数据密文。
-    pub ciphertext: String,
-    /// 附加数据。
-    pub associated_data: String,
-    /// 原始回调类型，为transaction。
-    pub original_type: String,
-    /// 加密使用的随机串。
-    pub nonce: String,
-}
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct WxPayNotify {
-    /// 通知的唯一ID。
-    pub id: String,
-    /// 通知创建的时间，遵循rfc3339标准格式，格式为yyyy-MM-DDTHH:mm:ss+TIMEZONE，yyyy-MM-DD表示年月日，T出现在字符串中，表示time元素的开头，HH:mm:ss.表示时分秒，TIMEZONE表示时区（+08:00表示东八区时间，领先UTC 8小时，即北京时间）。例如：2015-05-20T13:29:35+08:00表示北京时间2015年05月20日13点29分35秒。
-    pub create_time: String,
-    /// 通知的类型，支付成功通知的类型为 TRANSACTION.SUCCESS。
-    pub event_type: String,
-    /// 通知的资源数据类型，支付成功通知为encrypt-resource。
-    pub resource_type: String,
-    /// 通知资源数据。
-    pub resource: WxPayNotifyResource,
-    /// 回调摘要
-    pub summary: String,
-}
-/// 微信支付，通知应答解密
-///
-/// wx_pay_apiv3 为 apiv3 密钥
-///
-/// 使用示例 (actix-web为例，回调接口)
-/// ```
-/// #[post("/pay/notify_url/action")]
-/// pub async fn pay_notify_url_action(params: web::Json<WxPayNotify>) -> Result<impl Responder> {
-///     let params = params.0;  // params.event_type != "TRANSACTION.SUCCESS".to_string()
-///     let data = decode_wx_pay(WECHAT_PAY_APIV3, params).unwrap();
-///     if false { //  返回失败的 通知应答
-///         return Err(
-///             actix_web::error::ErrorInternalServerError("失败")
-///         )
-///     }
-///     Ok(web::Json(()))
-/// }
-///
-/// ```
-///
-pub fn decode_wx_pay(wx_pay_apiv3: &str, params: WxPayNotify) -> anyhow::Result<WxPayResource> {
-    let auth_key_length = 16;
 
-    let mut t_key = [0u8; 32];
-    hex::decode_to_slice(hex::encode(wx_pay_apiv3), &mut t_key as &mut [u8])?;
-    let key = GenericArray::from_slice(&t_key);
-
-    let mut t_nonce = [0u8; 12];
-    hex::decode_to_slice(
-        hex::encode(params.resource.nonce.clone()),
-        &mut t_nonce as &mut [u8],
-    )?;
-    let nonce = GenericArray::from_slice(&t_nonce);
-
-    let t_ciphertext_base =
-        engine::general_purpose::STANDARD.decode(params.resource.ciphertext.clone())?;
-    let cipherdata_length = t_ciphertext_base.len() - auth_key_length;
-
-    let cipherdata = &t_ciphertext_base[0..cipherdata_length];
-    let auth_tag = &t_ciphertext_base[cipherdata_length..];
-
-    let mut ciphertext = Vec::from(cipherdata);
-    ciphertext.extend_from_slice(&auth_tag);
-
-    // 注： AEAD_AES_256_GCM算法的接口细节，请参考rfc5116。微信支付使用的密钥key长度为32个字节，
-    // 随机串nonce长度12个字节，associated_data长度小于16个字节并可能为空字符串。
-    // 这里可能会根据返回值 associated_data 长度而不同，目前应该是固定为 "transaction"  ?/"certificate"。
-    let t_add = get_slice_arr(params.resource.associated_data);
-    let payload = Payload {
-        msg: &ciphertext,
-        aad: &t_add,
-    };
-    let cipher = Aes256Gcm::new(key);
-    let plaintext = cipher.decrypt(nonce, payload).unwrap();
-    let content = std::str::from_utf8(&plaintext)?;
-    let data: WxPayResource = serde_json::from_str(content)?;
-
-    Ok(data)
-}
-
-/// 支付回调，#resource解密后字段
+/// 退款回调，#resource解密后字段
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct WxRefundResource {
     /// 商户的商户号，由微信支付生成并下发。
@@ -190,45 +133,27 @@ pub struct WxRefundResourceAmount {
     /// 退款给用户的金额，不包含所有优惠券金额
     pub payer_refund: u64,
 }
+
+///
+
+/// 转账提现回调，#resource解密后字段
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct WxRefundNotifyResource {
-    /// 对开启结果数据进行加密的加密算法，目前只支持AEAD_AES_256_GCM。
-    pub algorithm: String,
-    /// Base64编码后的开启/停用结果数据密文。
-    pub ciphertext: String,
-    /// 附加数据。
-    pub associated_data: String,
-    /// 原始回调类型，为transaction。
-    pub original_type: String,
-    /// 加密使用的随机串。
-    pub nonce: String,
-}
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct WxRefundNotify {
-    /// 通知的唯一ID。
-    pub id: String,
-    /// 通知创建的时间，遵循rfc3339标准格式，格式为yyyy-MM-DDTHH:mm:ss+TIMEZONE，yyyy-MM-DD表示年月日，
-    /// T出现在字符串中，表示time元素的开头，HH:mm:ss.表示时分秒，TIMEZONE表示时区
-    /// （+08:00表示东八区时间，领先UTC 8小时，即北京时间）。
-    /// 例如：2015-05-20T13:29:35+08:00表示北京时间2015年05月20日13点29分35秒。
+pub struct WxTransferResource {
     pub create_time: String,
-    /// 通知的类型:
-    /// REFUND.SUCCESS：退款成功通知
-    /// REFUND.ABNORMAL：退款异常通知
-    /// REFUND.CLOSED：退款关闭通知
-    pub event_type: String,
-    /// 通知的资源数据类型，支付成功通知为encr
-    pub resource_type: String,
-    /// 通知资源数据。
-    pub resource: WxRefundNotifyResource,
-    /// 回调摘要
-    pub summary: String,
+    pub mchid: String,
+    pub openid: String,
+    pub out_bill_no: String,
+    /// SUCCESS
+    pub state: TransferBillStatus,
+    pub transfer_amount: u64,
+    pub transfer_bill_no: String,
+    pub update_time: String,
 }
-/// 微信支付退款，通知应答解密 使用方法 和 decode_wx_pay 类似
-pub fn decode_wx_refund(
-    wx_pay_apiv3: &str,
-    params: WxRefundNotify,
-) -> anyhow::Result<WxRefundResource> {
+
+pub fn decode_wx_notify<T>(wx_pay_apiv3: &str, params: WxNotify) -> anyhow::Result<T>
+where
+    T: serde::de::DeserializeOwned,
+{
     let auth_key_length = 16;
 
     let mut t_key = [0u8; 32];
@@ -263,7 +188,7 @@ pub fn decode_wx_refund(
     let cipher = Aes256Gcm::new(key);
     let plaintext = cipher.decrypt(nonce, payload).unwrap();
     let content = std::str::from_utf8(&plaintext)?;
-    let data: WxRefundResource = serde_json::from_str(content)?;
+    let data: T = serde_json::from_str(content)?;
 
     Ok(data)
 }

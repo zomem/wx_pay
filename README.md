@@ -12,6 +12,8 @@ let wx_pay = WxPay {
     serial_no: WECHAT_PAY_SERIAL,
     apiv3_private_key: WECHAT_PAY_APIV3,
     notify_url: WECHAT_PAY_NOTIFY_URL,
+    wx_public_key: Some(WECHAT_PUBLIC_KEY), // 可选，用于敏感信息加密
+    wx_public_key_id: Some(WECHAT_PUBLIC_KEY_ID), // 可选，微信支付公钥ID
 };
 ```
 
@@ -39,12 +41,15 @@ let wx_pay = WxPay {
 ```rust
     wx_pay.get_refund
 ```
+### 发起转账
+```rust
+    wx_pay.transfer
+```
 
 后台接口，以actix-web为例
 ```rust
-use wx_pay::{decode_wx_pay, Amount, Jsapi, Payer, WxPayData, WxPay, WxPayNotify};
-use wx_pay::TradeState;
-use wx_pay::decode::{WxPayNotify, decode_wx_pay};
+use wx_pay::{TradeState, Transfer, TransferDetail, TransferSceneReportInfo};
+use wx_pay::decode::{WxNotify, WxPayResource, decode_wx_notify};
 use wx_pay::verification::WxPayVerification;
 
 #[post("/pay/wx/v3/test")]
@@ -56,6 +61,8 @@ pub async fn pay_wx_v3_test() -> Result<impl Responder> {
         serial_no: WECHAT_PAY_SERIAL,
         apiv3_private_key: WECHAT_PAY_APIV3,
         notify_url: WECHAT_PAY_NOTIFY_URL,
+        wx_public_key: Some(WECHAT_PUBLIC_KEY),
+        wx_public_key_id: Some(WECHAT_PUBLIC_KEY_ID),
     };
     let data: WxPayData = wxpay
         .jsapi(&Jsapi {
@@ -71,6 +78,48 @@ pub async fn pay_wx_v3_test() -> Result<impl Responder> {
         .await
         .unwrap();
     return Ok(web::Json(data));
+}
+
+/// 发起转账
+#[post("/transfer")]
+pub async fn transfer_to_user() -> Result<impl Responder> {
+    let wxpay = WxPay {
+        appid: WECHAT_MINI_APP_ID,
+        mchid: WECHAT_PAY_MCH_ID,
+        private_key: WECHAT_PRIVATE_KEY,
+        serial_no: WECHAT_PAY_SERIAL,
+        apiv3_private_key: WECHAT_PAY_APIV3,
+        notify_url: WECHAT_PAY_NOTIFY_URL,
+        wx_public_key: Some(WECHAT_PUBLIC_KEY), // 用于加密用户姓名
+        wx_public_key_id: Some(WECHAT_PUBLIC_KEY_ID), // 微信支付公钥ID
+    };
+
+    // 构建转账场景报备信息
+    let mut transfer_scene_report_infos = Vec::new();
+    transfer_scene_report_infos.push(TransferSceneReportInfo {
+        info_type: "活动名称".to_string(),
+        info_content: "新会员有礼".to_string(),
+    });
+    transfer_scene_report_infos.push(TransferSceneReportInfo {
+        info_type: "奖励说明".to_string(),
+        info_content: "注册会员抽奖一等奖".to_string(),
+    });
+
+    let transfer_data = Transfer {
+        appid: WECHAT_MINI_APP_ID.to_string(),
+        out_bill_no: "T".to_string() + &rand_string(15), // 商户单号
+        transfer_scene_id: "1000".to_string(), // 转账场景ID，如现金营销
+        openid: user_openid.to_string(),
+        user_name: Some("张三".to_string()), // 收款用户姓名，会自动加密
+        transfer_amount: 100, // 转账金额，单位分
+        transfer_remark: "新会员开通有礼".to_string(),
+        notify_url: Some("https://your-domain.com/transfer-notify".to_string()),
+        user_recv_perception: Some("现金奖励".to_string()),
+        transfer_scene_report_infos,
+    };
+
+    let result: TransferDetail = wxpay.transfer(&transfer_data).await.unwrap();
+    return Ok(web::Json(result));
 }
 
 /// 微信支付 回调
@@ -107,13 +156,13 @@ pub async fn pay_notify_url_action(body: web::Bytes, req: actix_web::HttpRequest
     }
 
     // 2. 验签成功后再解析 JSON
-    let params: WxPayNotify = serde_json::from_slice(&body)?;
+    let params: WxNotify = serde_json::from_slice(&body)?;
     if params.event_type != "TRANSACTION.SUCCESS".to_string() {
         // 没返回成功
         return Err(error::ErrorMethodNotAllowed("失败"));
     }
-    let data =
-        decode_wx_pay(WECHAT_PAY_APIV3, params).map_err(|e| error::ErrorInternalServerError(e))?;
+    let data: WxPayResource =
+        decode_wx_notify(WECHAT_PAY_APIV3, params).map_err(|e| error::ErrorInternalServerError(e))?;
     if data.trade_state != TradeState::SUCCESS {
         // 没返回成功
         return Err(error::ErrorMethodNotAllowed("失败"));

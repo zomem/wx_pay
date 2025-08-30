@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     api::{Amount, Jsapi, PayApi, Payer, WxPayData},
-    fetch::{get, post},
-    utils::{gen_rand_str, get_timestamp, sha_rsa_sign},
-    JsapiParams, Refund, RefundDetail, TransactionDetail,
+    fetch::{get, post, post_with_serial},
+    utils::{gen_rand_str, get_timestamp, rsa_encrypt, sha_rsa_sign},
+    JsapiParams, Refund, RefundDetail, TransactionDetail, Transfer, TransferDetail,
 };
 
 #[derive(Debug)]
@@ -20,6 +20,10 @@ pub struct WxPay<'a> {
     pub api_v3_private_key: &'a str,
     /// 【通知地址】 异步接收微信支付结果通知的回调地址，通知URL必须为外网可访问的URL，不能携带参数。 公网域名必须为HTTPS，如果是走专线接入，使用专线NAT IP或者私有回调域名可使用HTTP
     pub notify_url: &'a str,
+    /// 【微信支付公钥】 用于敏感信息加密的微信支付公钥，.pem文件内容
+    pub wx_public_key: Option<&'a str>,
+    /// 【微信支付公钥ID】 微信支付公钥ID，用于设置Wechatpay-Serial头
+    pub wx_public_key_id: Option<&'a str>,
 }
 
 impl<'a> WxPay<'a> {
@@ -110,7 +114,7 @@ impl<'a> WxPay<'a> {
         let body = Mchid {
             mchid: self.mchid.to_string(),
         };
-        let _ = post(&self, &pay_req, &body).await?;
+        let _: serde_json::Value = post(&self, &pay_req, &body).await?;
         Ok(())
     }
 
@@ -127,6 +131,25 @@ impl<'a> WxPay<'a> {
         let pay_api = PayApi::GetRefund { out_refund_no };
         let pay_req = pay_api.get_pay_path(&self);
         let data: RefundDetail = get(&self, &pay_req).await?;
+        Ok(data)
+    }
+
+    /// 发起转账
+    /// 商家转账用户确认模式下，用户申请收款时，商户可通过此接口申请创建转账单
+    pub async fn transfer(&self, body: &Transfer) -> anyhow::Result<TransferDetail> {
+        let pay_api = PayApi::Transfer;
+        let pay_req = pay_api.get_pay_path(&self);
+
+        let mut transfer_body = body.clone();
+
+        // 如果有用户姓名且有公钥，则进行加密
+        if let (Some(user_name), Some(public_key)) = (&body.user_name, &self.wx_public_key) {
+            let encrypted_name = rsa_encrypt(public_key, user_name)?;
+            transfer_body.user_name = Some(encrypted_name);
+        }
+
+        let data: TransferDetail =
+            post_with_serial(&self, &pay_req, &transfer_body, self.wx_public_key_id).await?;
         Ok(data)
     }
 }
