@@ -1,5 +1,7 @@
 # 注：当前为测试版
 
+[使用示例](https://github.com/zomem/mall_server)
+
 ## 微信支付，rust api
 
 **目前版本 apiv3 jsapi**
