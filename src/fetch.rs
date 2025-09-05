@@ -42,10 +42,6 @@ where
     let status = response.status();
     let response_text = response.text().await?;
 
-    // 调试输出响应内容
-    println!("Response status: {}", status);
-    println!("Response body: {}", response_text);
-
     if !status.is_success() {
         return Err(anyhow::anyhow!("HTTP error {}: {}", status, response_text));
     }
@@ -71,7 +67,6 @@ where
     T: Serialize + DeserializeOwned + Debug,
     U: Serialize + DeserializeOwned,
 {
-    println!("参数：{:#?}", body);
     let headers = get_headers_with_serial(wx_pay, pay_req, Some(body), wechatpay_serial)?;
     let client = reqwest::Client::new();
     let url = WX_BASE_URL.to_string() + &pay_req.path;
@@ -80,10 +75,6 @@ where
 
     let status = response.status();
     let response_text = response.text().await?;
-
-    // 调试输出响应内容
-    println!("Response status: {}", status);
-    println!("Response body: {}", response_text);
 
     if !status.is_success() {
         return Err(anyhow::anyhow!("HTTP error {}: {}", status, response_text));

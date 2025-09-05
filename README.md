@@ -169,7 +169,7 @@ pub async fn pay_notify_url_action(body: web::Bytes, req: actix_web::HttpRequest
         // 没返回成功
         return Err(error::ErrorMethodNotAllowed("失败"));
     }
-    println!("回调解密数据： {:#?}", data);
+    // println!("回调解密数据： {:#?}", data);
 
     // ----- 你的业务逻辑 -----
 
